@@ -1,0 +1,7 @@
+# Release artefacts, built by scripts/build-tarball.sh and by CI.
+/dist/
+
+# `jennifer fmt -w` writes through a temp file in the same directory and removes it on
+# every path it controls. One survives only if the process is killed between the write and
+# the fsync, which leaves a file nobody wants committed.
+.jfmt-*.tmp

@@ -1,0 +1,145 @@
+# SPDX-License-Identifier: LGPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 mplx <jennifer@mplx.dev>
+#
+# On a SemVer tag: inject the version, re-run every check, and publish a tarball that
+# `jvc app install` can consume.
+#
+# The tag is the single source of truth for the version. `scripts/release.sh` writes it
+# into `src/release.j` and `deck.toml` *in the build*, and the result is what ships - so a
+# published tarball can never disagree with the tag it was cut from, and nobody has to
+# remember to bump a constant before tagging.
+
+name: release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "existing tag to build"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build jennifer from main
+        # `go build ./cmd/jennifer` produces the interpreter and nothing else. The standard
+        # library is Jennifer source - `screen.j`, `args.j`, `ansi.j` and the rest - which a
+        # package installs separately into `/usr/share/jennifer/modules`, and a runner has
+        # no such directory. Without it every `import "screen.j"` fails at load time.
+        #
+        # `JENNIFER_SYSMODDIR` points the search path at the checkout's own `modules/`,
+        # which is what the interpreter's packaging installs from. It is validated on
+        # startup - a missing directory is an error, not a silent empty path - so a wrong
+        # value here fails loudly rather than looking like a broken import.
+        run: |
+          git clone --depth 1 https://github.com/jennifer-language/jennifer.git "$RUNNER_TEMP/jennifer"
+          cd "$RUNNER_TEMP/jennifer"
+          go build -o "$RUNNER_TEMP/bin/jennifer" ./cmd/jennifer
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          echo "JENNIFER_SYSMODDIR=$RUNNER_TEMP/jennifer/modules" >> "$GITHUB_ENV"
+          # Which commit of main this run tested against, so a failure here can be
+          # reproduced against the same interpreter rather than against whatever main
+          # happens to be by the time somebody looks.
+          echo "JENNIFER_COMMIT=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Inject the version from the tag
+        # `version.sh` is read *before* `release.sh` runs, because writing the version into
+        # the tree makes it dirty and `version.sh` would then report a dev version for a
+        # build that is exactly the tag. Afterwards the injected file is the source of
+        # truth, which is what `release-version.sh` reads.
+        run: |
+          echo "DERIVED=$(sh scripts/version.sh)" >> "$GITHUB_ENV"
+          sh scripts/release.sh
+          echo "VERSION=$(sh scripts/release-version.sh)" >> "$GITHUB_ENV"
+
+      - name: Check the injected version matches the tag
+        # A tagged build must produce the bare tag, with no build metadata, in both places:
+        # what git said before injection, and what landed in the tree after it. If either
+        # disagrees, the checkout is not actually on the tag and the tarball would be
+        # mislabelled.
+        run: |
+          if [ "$DERIVED" != "$VERSION" ]; then
+            echo "git derived '$DERIVED' but '$VERSION' was injected"
+            exit 1
+          fi
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          if [ "$VERSION" != "$tag" ]; then
+            echo "version script says '$VERSION' but the tag is '$tag'"
+            exit 1
+          fi
+          jennifer run bin/jsnake --version
+
+      - name: Check formatting
+        run: |
+          unformatted=$(jennifer fmt -l src/*.j bin/jsnake scripts/*.j)
+          if [ -n "$unformatted" ]; then
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Lint
+        run: jennifer lint src/*.j bin/jsnake scripts/*.j
+
+      - name: Test
+        run: |
+          status=0
+          for f in src/*_test.j; do
+            jennifer test "$f" || status=1
+          done
+          exit $status
+
+      - name: Smoke test
+        run: sh scripts/smoke.sh
+
+      - name: Build the tarball
+        run: sh scripts/build-tarball.sh
+
+      - name: Check the tarball installs and runs
+        run: |
+          tar -xzf "dist/jsnake-$VERSION.tar.gz" -C "$RUNNER_TEMP"
+          tree="$RUNNER_TEMP/jsnake-$VERSION"
+          test "$($tree/bin/jsnake --version)" = "$VERSION"
+          # `jvc app install` unpacks the whole tree and puts `[package] bin` on PATH, so
+          # the launcher has to work through a symlink from somewhere else entirely.
+          ln -s "$tree/bin/jsnake" "$RUNNER_TEMP/jsnake-link"
+          "$RUNNER_TEMP/jsnake-link" --version
+          grep -q "^version = \"$VERSION\"$" "$tree/deck.toml"
+          # Everything the Arch package installs by name, and a man page the formatter
+          # accepts. A release missing its licence text would be the worst of these to
+          # discover after the tag is public.
+          for f in LICENSE LICENSE.GPL-3.0 man/jsnake.1 README.md; do
+            test -f "$tree/$f" || { echo "the tarball is missing $f"; exit 1; }
+          done
+          warnings=$(man --warnings -l "$tree/man/jsnake.1" 2>&1 >/dev/null)
+          test -z "$warnings" || { echo "$warnings"; echo "roff warnings"; exit 1; }
+          # The page names the version it documents; a stale .TH line is a wrong page.
+          grep -q "^\.TH JSNAKE 1 .* \"jsnake $VERSION\" " "$tree/man/jsnake.1"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" \
+            --title "jsnake $VERSION" \
+            --generate-notes \
+            "dist/jsnake-$VERSION.tar.gz" \
+            "dist/jsnake-$VERSION.tar.gz.sha256" \
+            || gh release upload "$VERSION" \
+              "dist/jsnake-$VERSION.tar.gz" \
+              "dist/jsnake-$VERSION.tar.gz.sha256" --clobber

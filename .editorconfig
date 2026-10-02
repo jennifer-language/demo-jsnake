@@ -1,0 +1,20 @@
+# .editorconfig - keeps every editor on the source style jennifer fmt emits, so a
+# formatted file and an edited file never disagree about whitespace.
+root = true
+
+[*]
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.j]
+indent_style = space
+indent_size = 4
+
+[PKGBUILD*]
+indent_style = tab
+
+[*.md]
+# Markdown gives a trailing double space a meaning, so leave it alone here.
+trim_trailing_whitespace = false

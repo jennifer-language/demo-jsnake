@@ -1,0 +1,90 @@
+# Maintainer: mplx <jennifer@mplx.dev>
+#
+# AUR PKGBUILD for `jsnake-git`: builds from the tip of main. Pair to `PKGBUILD`,
+# which installs a tagged release tarball. Use this one while the project has no
+# tags yet, or to track development.
+
+pkgname=jsnake-git
+_pkgname=jsnake
+pkgver=0.1.0.r0.g0000000
+pkgrel=1
+pkgdesc='Multiplayer snake game for Linux console, written in Jennifer, over UDP/TCP, with UDP discovery, CPU opponents, special food (git)'
+arch=('any')
+url='https://github.com/jennifer-language/demo-jsnake'
+license=('LGPL-3.0-only')
+
+# See the release PKGBUILD for why the jennifer dependency carries no version.
+depends=('jennifer')
+makedepends=('git')
+provides=("${_pkgname}=${pkgver%%.r*}")
+conflicts=("$_pkgname")
+
+source=("$_pkgname::git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+	cd "${srcdir}/${_pkgname}"
+
+	# `<tag>.r<commits>.g<sha>`, so a git package always sorts above the release it
+	# descends from - pacman's ordering, which is not SemVer's: `.r7.gabc` is
+	# *greater* than the bare tag here, whereas the project's own `+7.gabc` build
+	# metadata compares equal. Both are right for their own package manager.
+	#
+	# The tag is read from git, the same source `scripts/version.sh` uses.
+	local ver
+	ver=$(git describe --tags --abbrev=0 --match '[0-9]*.[0-9]*.[0-9]*' 2>/dev/null)
+	if [ -z "$ver" ]; then
+		ver=$(sed -n 's/^version = "\(.*\)"$/\1/p' deck.toml | head -n1)
+	fi
+	printf '%s.r%s.g%s' "${ver:-0}" "$(git rev-list --count HEAD)" \
+		"$(git rev-parse --short HEAD)"
+}
+
+check() {
+	cd "${srcdir}/${_pkgname}"
+
+	local f
+	for f in src/*_test.j; do
+		jennifer test "$f"
+	done
+
+	# The loops that own the terminal and the sockets are unreachable from the
+	# suite; this drives them through a pty. Skipped where no pty is available.
+	if command -v script >/dev/null 2>&1; then
+		sh scripts/smoke.sh
+	fi
+}
+
+package() {
+	cd "${srcdir}/${_pkgname}"
+
+	install -Dm755 bin/jsnake "${pkgdir}/usr/share/${_pkgname}/bin/jsnake"
+	install -Dm644 deck.toml "${pkgdir}/usr/share/${_pkgname}/deck.toml"
+
+	install -dm755 "${pkgdir}/usr/share/${_pkgname}/src"
+	local f
+	for f in src/*.j; do
+		case "$f" in
+		*_test.j) continue ;;
+		esac
+		install -m644 "$f" "${pkgdir}/usr/share/${_pkgname}/src/"
+	done
+
+	# The terminal diagnostic imports ../src, so it ships beside it.
+	install -Dm755 scripts/terminal.j "${pkgdir}/usr/share/${_pkgname}/scripts/terminal.j"
+
+	install -dm755 "${pkgdir}/usr/bin"
+	ln -s "/usr/share/${_pkgname}/bin/jsnake" "${pkgdir}/usr/bin/jsnake"
+
+	# The man page. makepkg compresses it and fixes its permissions, so install the
+	# roff source as-is; `man jsnake` then works without the tree being on MANPATH.
+	install -Dm644 man/jsnake.1 "${pkgdir}/usr/share/man/man1/jsnake.1"
+
+	# Arch ships the common licence texts in `licenses`, but install ours anyway: the
+	# LGPL asks that the terms travel with the work, and the pair matters here - LGPL-3.0
+	# is additional permissions over GPL-3.0 and is incomplete without it.
+	install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+	install -Dm644 LICENSE.GPL-3.0 "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.GPL-3.0"
+
+	install -Dm644 README.md -t "${pkgdir}/usr/share/doc/${pkgname}"
+}

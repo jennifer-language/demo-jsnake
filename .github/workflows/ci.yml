@@ -1,0 +1,140 @@
+# SPDX-License-Identifier: LGPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 mplx <jennifer@mplx.dev>
+#
+# Lint, format-check and test on every push and pull request.
+#
+# Against the **tip of Jennifer's main branch**, not a release: the game's floor is
+# 0.25.0 and that is not released yet, so a dev build is the only interpreter that can
+# run it. That also means this workflow is an early-warning system for the language as much
+# as for the game: a breaking change upstream shows up here before anyone hits it by hand.
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["*.*.*"]
+  pull_request:
+  schedule:
+    # Weekly, so an upstream change that breaks us is noticed without a push of our own.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The version script needs tags and history to describe the checkout.
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build jennifer from main
+        # `go build ./cmd/jennifer` produces the interpreter and nothing else. The standard
+        # library is Jennifer source - `screen.j`, `args.j`, `ansi.j` and the rest - which a
+        # package installs separately into `/usr/share/jennifer/modules`, and a runner has
+        # no such directory. Without it every `import "screen.j"` fails at load time.
+        #
+        # `JENNIFER_SYSMODDIR` points the search path at the checkout's own `modules/`,
+        # which is what the interpreter's packaging installs from. It is validated on
+        # startup - a missing directory is an error, not a silent empty path - so a wrong
+        # value here fails loudly rather than looking like a broken import.
+        run: |
+          git clone --depth 1 https://github.com/jennifer-language/jennifer.git "$RUNNER_TEMP/jennifer"
+          cd "$RUNNER_TEMP/jennifer"
+          go build -o "$RUNNER_TEMP/bin/jennifer" ./cmd/jennifer
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          echo "JENNIFER_SYSMODDIR=$RUNNER_TEMP/jennifer/modules" >> "$GITHUB_ENV"
+          # Which commit of main this run tested against, so a failure here can be
+          # reproduced against the same interpreter rather than against whatever main
+          # happens to be by the time somebody looks.
+          echo "JENNIFER_COMMIT=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      - name: Report the interpreter under test
+        run: |
+          jennifer version
+          echo "jennifer main @ $JENNIFER_COMMIT"
+
+      - name: Check formatting
+        # `fmt -l` lists files that do not match the formatter and prints nothing when
+        # they all do, so any output at all is a failure.
+        run: |
+          unformatted=$(jennifer fmt -l src/*.j bin/jsnake scripts/*.j)
+          if [ -n "$unformatted" ]; then
+            echo "not formatted:"
+            echo "$unformatted"
+            echo "run: jennifer fmt -w src/*.j bin/jsnake scripts/*.j"
+            exit 1
+          fi
+
+      - name: Lint
+        # Zero findings, including the info-level ones. The project has never carried any
+        # and a threshold is easier to defend at zero than anywhere else.
+        run: jennifer lint src/*.j bin/jsnake scripts/*.j
+
+      - name: Test
+        run: |
+          status=0
+          for f in src/*_test.j; do
+            echo "== $f"
+            jennifer test "$f" || status=1
+          done
+          exit $status
+
+      - name: Coverage
+        # Reported, not gated: a number that fails the build invites tests written to move
+        # it. The pure modules sit at 100% and the two I/O loops deliberately do not.
+        run: |
+          for f in src/*_test.j; do
+            jennifer test --coverage "$f" 2>/dev/null | sed -n '/Coverage/,$p' | head -4
+          done
+
+      - name: Smoke test
+        # The loops that own the terminal and the sockets are unreachable from the suite,
+        # and Jennifer checks argument types when a call runs rather than when it parses -
+        # so a signature changed in one of them is invisible until it executes. This drives
+        # the real binary under a pty.
+        run: sh scripts/smoke.sh
+
+      - name: Build the release tarball
+        run: sh scripts/build-tarball.sh
+
+      - name: Check the tarball runs
+        run: |
+          # The same reader `build-tarball.sh` named the file with. Asking git instead would
+          # look for a dev-versioned path that was never built.
+          version=$(sh scripts/release-version.sh)
+          tar -xzf "dist/jsnake-$version.tar.gz" -C "$RUNNER_TEMP"
+          tree="$RUNNER_TEMP/jsnake-$version"
+          "$tree/bin/jsnake" --version
+          if ls "$tree/src/" | grep -q _test; then
+            echo "the tarball ships test overlays; it should not"
+            exit 1
+          fi
+          # What a package installs has to be in the archive a package is built from:
+          # the tagged PKGBUILD unpacks this and installs each of these by name.
+          for f in LICENSE LICENSE.GPL-3.0 man/jsnake.1 deck.toml README.md; do
+            test -f "$tree/$f" || { echo "the tarball is missing $f"; exit 1; }
+          done
+          # And the roff has to be clean: `man --warnings` writes to stderr and still
+          # exits 0, so the warnings themselves are the failure condition.
+          warnings=$(man --warnings -l "$tree/man/jsnake.1" 2>&1 >/dev/null)
+          if [ -n "$warnings" ]; then
+            echo "$warnings"
+            echo "man/jsnake.1 has roff warnings"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jsnake-dev-tarball
+          path: dist/*
+          retention-days: 14

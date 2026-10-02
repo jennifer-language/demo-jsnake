@@ -1,0 +1,372 @@
+.\" SPDX-License-Identifier: LGPL-3.0-only
+.\" SPDX-FileCopyrightText: Copyright (C) 2026 mplx <jennifer@mplx.dev>
+.\"
+.\" Checked against the real grammar by `testTheManPageDocumentsEveryFlag` in
+.\" src/cli_test.j: every long flag the parser declares has to appear here, and every
+.\" flag named here has to exist in the parser. Add a flag to src/cli.j and this page
+.\" fails the suite until it is documented.
+.TH JSNAKE 1 "2026-10-01" "jsnake 0.1.0" "Games"
+.SH NAME
+jsnake \- multiplayer snake game for the Linux console
+.SH SYNOPSIS
+.B jsnake host
+.RI [ options ]
+.br
+.B jsnake join
+.RI [ options ]
+.br
+.B jsnake solo
+.RI [ options ]
+.br
+.B jsnake list
+.RI [ options ]
+.br
+.B jsnake
+.BR \-\-version | \-\-help
+.SH DESCRIPTION
+.B jsnake
+is a multiplayer snake game for the Linux console, written in Jennifer. Players find
+each other by UDP broadcast, so nobody has to type an address; the game itself is
+played over either TCP or UDP, and empty seats can be filled by computer opponents at
+four difficulty levels.
+.PP
+One host owns the game. It is the only process that advances the world: clients send
+the direction they want and draw what they are sent, so there is no disagreement to
+resolve and a lost packet costs at most one frame. The host opens on a title screen
+where every setting can be changed while players arrive, and the game starts when the
+host says so.
+.PP
+Nobody picks a field size. Every player reports the terminal they are sitting at, and
+the host plays on the largest field the smallest terminal can show, separately in each
+direction. See
+.B THE FIELD
+below.
+.SH COMMANDS
+.TP
+.B host
+Host a game others can join. Opens on the title screen unless
+.B \-\-now
+is given.
+.TP
+.B join
+Join a game on this network. With no
+.B \-\-host
+it looks for games by broadcast and offers what it finds as a numbered menu.
+.TP
+.B solo
+Play the computer with no network at all: no sockets are opened and no broadcasts are
+answered. Starts at once unless
+.B \-\-setup
+is given.
+.TP
+.B list
+Print the games on this network and exit. Draws nothing and needs no terminal, so it
+works over
+.BR ssh (1)
+and in a pipe \- which makes it the quickest way to tell a discovery problem from a
+game problem.
+.SH OPTIONS
+.SS Global
+.TP
+.B \-h, \-\-help
+Show help and exit. Accepted for each subcommand too, where it describes that
+subcommand's own options.
+.TP
+.B \-\-version
+Print the version and exit. On a release build this is a SemVer tag; anywhere else it
+carries the commits since that tag and the commit it was built from.
+.SS host
+.TP
+.BI \-m ", " \-\-mode " MODE"
+Transport: \fBtcp\fR or \fBudp\fR. Default \fBudp\fR. UDP caps the field at about
+9,300 cells, because a whole state line has to fit one datagram; TCP has no such limit.
+.TP
+.BI \-p ", " \-\-port " PORT"
+Game port to listen on. Default \fB47475\fR. Discovery always uses \fB47474\fR.
+.TP
+.BI \-n ", " \-\-name " NAME"
+Your name, shown to others. Default \fBjsnake\fR.
+.TP
+.BI \-w ", " \-\-width " WIDTH"
+Maximum field width. A cap, not a request: it can make the field smaller than the
+terminals would allow, never larger. Default \fB240\fR, the game's own limit, which
+does not bind in practice.
+.TP
+.BI \-\-height " HEIGHT"
+Maximum field height, on the same terms. Default \fB100\fR.
+.TP
+.BI \-\-tick " TICK"
+Milliseconds per move; lower is faster. Default \fB125\fR, which is eight moves a
+second.
+.TP
+.BI \-\-players " PLAYERS"
+How many players to allow, 1 to 8. Default \fB8\fR. Seats are counted, not kinds: see
+.B \-\-bots
+below.
+.TP
+.BI \-b ", " \-\-bots " BOTS"
+How many computer players to add. Default \fB0\fR. Bots fill the seats that
+.B \-\-players
+leaves after the humans, so
+.B \-\-players 8 \-\-bots 8
+seats one human and seven bots rather than refusing. The title screen shows the number
+it settled on.
+.TP
+.BI \-l ", " \-\-bot\-level " LEVEL"
+Computer skill: \fBeasy\fR, \fBnormal\fR, \fBhard\fR, or \fBexpert\fR. Default
+\fBnormal\fR. Higher levels look further ahead and flood\-fill the space a move leads
+into, so they do not trap themselves.
+.TP
+.BI \-\-on\-leave " POLICY"
+What happens when a player drops out: \fBforfeit\fR (their snake leaves with them) or
+\fBtakeover\fR (a computer player of the current skill finishes their game). Default
+\fBforfeit\fR.
+.TP
+.BI \-\-lives " LIVES"
+Lives per player before they become a spectator, 0 to 9. \fB0\fR means unlimited and
+there are then no spectators. Default \fB3\fR.
+.TP
+.B \-\-wrap
+No walls: step off one edge and arrive at the opposite one, as in Pac\-Man. Only the
+other snakes can kill you. The frame is drawn dashed rather than solid in that mode.
+.TP
+.B \-\-plain
+Classic rules: plain food only, no specials.
+.TP
+.B \-\-now
+Skip the title screen and start at once.
+.TP
+.BI \-\-seed " SEED"
+Random seed. \fB0\fR picks one from the clock. A fixed seed makes a game reproducible,
+which is what the tests and the screenshots in the README use.
+.TP
+.B \-\-watch
+Referee only: run the game without taking a seat. The host's own terminal still counts
+toward the field size.
+.TP
+.B \-\-private
+Do not answer discovery broadcasts. Players then need
+.B join \-\-host
+and the address.
+.SS join
+.TP
+.BI \-H ", " \-\-host " ADDRESS"
+Host address as \fIip:port\fR; omit it to go looking by broadcast. Needed across a
+VPN, a bridged container, or a firewall that eats \fB255.255.255.255\fR.
+.TP
+.BI \-m ", " \-\-mode " MODE"
+Transport when
+.B \-\-host
+is given: \fBtcp\fR or \fBudp\fR. Default \fBudp\fR. Ignored otherwise, because a
+discovered game announces its own transport.
+.TP
+.BI \-n ", " \-\-name " NAME"
+Your name, shown to others. Default \fBguest\fR.
+.TP
+.BI \-t ", " \-\-timeout " MS"
+How long to look for games, in milliseconds. Default \fB700\fR.
+.SS solo
+.TP
+.BI \-n ", " \-\-name " NAME"
+Your name on the scoreboard. Default \fBjsnake\fR.
+.TP
+.BI \-b ", " \-\-bots " BOTS"
+How many computer players to add. Default \fB3\fR.
+.TP
+.BI \-l ", " \-\-bot\-level " LEVEL"
+Computer skill, as for
+.BR host .
+Default \fBnormal\fR.
+.TP
+.B \-\-setup
+Show the title screen before starting, instead of starting at once.
+.PP
+.BR \-w ", " \-\-width ", " \-\-height ", " \-\-tick ", " \-\-lives ", " \-\-wrap " and " \-\-plain
+mean what they do for
+.BR host .
+.SS list
+.TP
+.BI \-t ", " \-\-timeout " MS"
+How long to look for games, in milliseconds. Default \fB700\fR.
+.SH KEYS
+.TP
+.B arrow keys, w a s d
+Steer. WASD is offered because some terminals and multiplexers swallow arrow keys.
+A snake cannot turn back on itself; that key is ignored rather than fatal.
+.TP
+.B Escape
+Back out of wherever you are \- the only key the game navigates with. A host playing a
+round returns to its title screen with everyone still seated and every player id
+unchanged; a host already on the title screen leaves, having nothing behind it; the final
+standings go back to the title screen. A client has no screen of its own behind the game
+and so leaves, as does
+.B solo
+or a
+.B \-\-now
+host, neither of which ever showed a title screen. Repeated, it always gets you out, one
+screen at a time.
+.IP
+.B It takes two presses.
+A lone Escape is never delivered \- the interpreter's keyboard layer reads a second byte
+after it with no timeout \- so the pair is what arrives as one Escape. Every key legend
+therefore reads
+.B esc esc
+rather than
+.BR esc ;
+see
+.B BUGS
+below.
+.TP
+.B Ctrl\-C
+Stop the program immediately, from any screen. The terminal's own convention rather than
+one of the game's keys, and deliberately still reachable after a swallowed Escape, so a
+player who pressed Escape once and saw nothing happen is never stuck.
+.TP
+.B enter, space
+Confirm: start the game from the title screen, or begin another round from the final
+standings.
+.TP
+.B up, down, left, right
+On the title screen: up and down choose a setting, left and right change it.
+.TP
+.B r, F5
+Refresh the list of games on the join menu.
+.TP
+.B 1\-9
+Pick a game from the join menu.
+.PP
+No plain letter is a command: apart from
+.BR w " " a " " s " " d
+the letters do nothing, so a stray keypress cannot end a game.
+.SH FOOD
+Plain food is \fB*\fR and adds one cell. With specials on \- the default \- four more
+can appear, each with its own rate and its own countdown, and each vanishes if nobody
+takes it in time.
+.TP
+.B C
+Candy: three cells at once.
+.TP
+.B V
+Vegetables: three cells off. A snake with fewer than three dies eating it.
+.TP
+.B G
+Ghost: ten seconds of passing through other snakes' bodies. Their heads still kill.
+.TP
+.B !
+Toadstool: sudden death.
+.PP
+The legend under the field names whatever is in play, so the rules are on screen rather
+than in this page.
+.SH THE FIELD
+Every player reports its terminal size on joining, and the host plays the largest field
+the smallest terminal can show \- separately in each direction, so a short wide terminal
+decides the height and a tall narrow one the width.
+.PP
+Scoreboard rows are reserved for a full table rather than for whoever is present, so
+the field never changes size because somebody joined. Host with
+.B \-\-players 2
+and the spare rows come back as playing space.
+.PP
+The title screen always names whichever limit actually bound \- the terminals, a
+.BR \-\-width / \-\-height
+cap, or the UDP datagram \- so a field smaller than the display tells you which knob
+would change it. A player whose window is too small for the agreed field is flagged
+there before the game starts.
+.PP
+.B /usr/share/jsnake/scripts/terminal.j
+prints what the game sees: the size the terminal reports, what each player count costs
+in scoreboard rows, and where the UDP limit would bite.
+.SH NETWORK
+.TP
+.B UDP 47474
+Discovery. A host answers broadcast queries with one line describing its game;
+.B \-\-private
+turns that off.
+.TP
+.B TCP/UDP 47475
+The game itself, per
+.BR \-\-port .
+.PP
+The protocol is line\-oriented text, one line per message, so a game can be watched
+with
+.BR nc (1)
+and a capture read without a decoder.
+.SH EXIT STATUS
+.TP
+.B 0
+Normal exit, including
+.BR \-\-help " and " \-\-version .
+.TP
+.B 1
+A usage error, a refused join, or a network error the game could not continue past. The
+reason is printed on the terminal the program was started from, after the screen is
+restored.
+.SH FILES
+.TP
+.B /usr/share/jsnake/
+The installed tree.
+.B bin/
+and
+.B src/
+must stay siblings: the launcher imports
+.B ../src/cli.j
+relative to its own file.
+.TP
+.B /usr/share/jsnake/deck.toml
+The app manifest: version, capabilities, and the interpreter floor.
+.SH EXAMPLES
+.TP
+Host a game on this network and wait on the title screen:
+.B jsnake host
+.TP
+Host a fast walled game for four, two of them computer players:
+.B jsnake host \-\-players 4 \-\-bots 2 \-\-tick 80
+.TP
+Host a Pac\-Man\-style game with no specials and one life each:
+.B jsnake host \-\-wrap \-\-plain \-\-lives 1
+.TP
+Referee a game of bots over TCP without playing:
+.B jsnake host \-\-watch \-\-bots 6 \-\-mode tcp
+.TP
+Join whatever is out there, under your own name:
+.B jsnake join \-\-name ada
+.TP
+Join a host discovery cannot reach:
+.B jsnake join \-\-host 192.168.1.5:47475 \-\-mode udp
+.TP
+See what is on the network, from a pipe:
+.B jsnake list
+.SH BUGS
+.B Escape takes two presses.
+A lone Escape is never delivered: the interpreter's keyboard layer reads a second byte
+unconditionally after one \- to tell a bare Escape from the start of an arrow\-key
+sequence \- and has no timed read, so that read blocks until another key is pressed.
+Pressing Escape twice decodes the pair as a single Escape, which is why the key works at
+all, and why every legend spells it
+.BR "esc esc" .
+A single Escape followed by a printable key is merged into Alt+that key, so neither press
+has any effect; Ctrl\-C after an Escape does still arrive, which is what keeps the
+emergency exit reachable.
+.PP
+This is an upstream limitation, reported to the Jennifer team with reproductions. It needs
+a timed read in the interpreter's
+.B term
+library; when that lands, a single constant in
+.B src/keys.j
+changes and every legend in the game follows it.
+.PP
+Report bugs at
+.UR https://github.com/jennifer-language/demo-jsnake/issues
+.UE .
+.SH SEE ALSO
+.BR jennifer (1),
+.BR jvc (1),
+.BR nc (1)
+.PP
+.UR https://github.com/jennifer-language/demo-jsnake
+.UE
+for the README, which covers the protocol and the reasoning behind it.
+.SH AUTHOR
+mplx <jennifer@mplx.dev>
+.SH COPYRIGHT
+Copyright (C) 2026 mplx <jennifer@mplx.dev>. Licensed under LGPL\-3.0\-only.

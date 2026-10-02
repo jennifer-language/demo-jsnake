@@ -1,0 +1,108 @@
+# Maintainer: mplx <jennifer@mplx.dev>
+#
+# AUR PKGBUILD for `jsnake`: installs the release tarball published with each tag.
+# Pair to `PKGBUILD-git`, which builds from the tip of main.
+#
+# There is no `-bin` variant because there is nothing to compile: jsnake is
+# architecture-independent Jennifer source and the release tarball is already the
+# runtime tree. `arch=('any')` accordingly.
+
+pkgname=jsnake
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Multiplayer snake game for Linux console, written in Jennifer, over UDP/TCP, with UDP discovery, CPU opponents, special food.'
+arch=('any')
+url='https://github.com/jennifer-language/demo-jsnake'
+license=('LGPL-3.0-only')
+
+# Unversioned on purpose. jsnake needs `jennifer >= 0.25.0` and says so in its own
+# `[engines]`, but `jennifer-bin` and `jennifer-git` both declare a bare
+# `provides=('jennifer')` with no version attached, so `jennifer>=0.25.0` here
+# would be *unsatisfiable* rather than merely unmet and pacman would refuse the
+# package outright. The floor is still enforced, one layer down: every jsnake
+# source file carries `# pragma-jennifer-version: >=0.25.0` and the interpreter
+# checks it at read time. Add the version back here as soon as the interpreter
+# packages advertise `provides=("jennifer=$pkgver")`.
+#
+# The default `jennifer` binary specifically, not `jennifer-tiny`: the game needs
+# the `net` capability for its sockets and `term` for raw-mode input, and the tiny
+# build stubs both. The interpreter refuses to load the files at read time on a
+# build without `net`, so a wrong interpreter is a clear message rather than a
+# puzzling failure mid-game.
+depends=('jennifer')
+provides=("jsnake=$pkgver")
+conflicts=('jsnake-git')
+
+# The curated runtime tarball `scripts/build-tarball.sh` builds and the release
+# workflow attaches to the tag - not GitHub's auto-generated source archive,
+# which carries the test overlays, the packaging and the CI config, none of
+# which belong in an installed tree.
+#
+# It also matters for the directory name: the release tarball unpacks to
+# `jsnake-<version>/`, which is what `check()` and `package()` below cd into,
+# whereas the source archive would unpack to `demo-jsnake-<version>/` after the
+# repository and the build would fail looking for the wrong path.
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/$pkgver/$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+check() {
+	cd "${srcdir}/${pkgname}-${pkgver}"
+
+	# No suite here, on purpose. The release tarball is the runtime tree and carries
+	# neither the `_test.j` overlays nor `scripts/smoke.sh` - the same files the deck
+	# model leaves out when it vendors - so there is nothing for `jennifer test` to
+	# find and a loop over `src/*_test.j` would fail on the unmatched glob. The suite
+	# runs where the files are: in CI on every push, and in `PKGBUILD-git`, which
+	# builds from a full checkout.
+	#
+	# What is worth checking is that this tree runs at all under the interpreter the
+	# build host has, which catches a bad tarball, a missing module and a version
+	# pragma the installed interpreter refuses - without a terminal, a socket or a
+	# test file.
+	./bin/jsnake --version
+	./bin/jsnake --help >/dev/null
+	jennifer lint src/*.j
+}
+
+package() {
+	cd "${srcdir}/${pkgname}-${pkgver}"
+
+	# The launcher resolves `import "../src/cli.j"` relative to its own file, so
+	# `bin/` and `src/` must stay siblings. `/usr/share` is right for an
+	# architecture-independent tree, and it matches the layout `jvc app install`
+	# uses for an app in a prefix (`<prefix>/share/<name>`).
+	install -Dm755 bin/jsnake "${pkgdir}/usr/share/jsnake/bin/jsnake"
+	install -Dm644 deck.toml "${pkgdir}/usr/share/jsnake/deck.toml"
+
+	# The modules, but not the `_test.j` overlays: they are development files, and
+	# the deck model skips them when vendoring for the same reason.
+	install -dm755 "${pkgdir}/usr/share/jsnake/src"
+	local f
+	for f in src/*.j; do
+		case "$f" in
+		*_test.j) continue ;;
+		esac
+		install -m644 "$f" "${pkgdir}/usr/share/jsnake/src/"
+	done
+
+	# A symlink rather than a wrapper, which is also how `jvc app install` puts a
+	# command on PATH: `ls -l` then shows where jsnake really lives, and the
+	# interpreter resolves the relative import through the link.
+	# The terminal diagnostic imports ../src, so it ships beside it.
+	install -Dm755 scripts/terminal.j "${pkgdir}/usr/share/jsnake/scripts/terminal.j"
+
+	install -dm755 "${pkgdir}/usr/bin"
+	ln -s /usr/share/jsnake/bin/jsnake "${pkgdir}/usr/bin/jsnake"
+
+	# The man page. makepkg compresses it and fixes its permissions, so install the
+	# roff source as-is; `man jsnake` then works without the tree being on MANPATH.
+	install -Dm644 man/jsnake.1 "${pkgdir}/usr/share/man/man1/jsnake.1"
+
+	# Arch ships the common licence texts in `licenses`, but install ours anyway: the
+	# LGPL asks that the terms travel with the work, and the pair matters here - LGPL-3.0
+	# is additional permissions over GPL-3.0 and is incomplete without it.
+	install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+	install -Dm644 LICENSE.GPL-3.0 "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.GPL-3.0"
+
+	install -Dm644 README.md -t "${pkgdir}/usr/share/doc/${pkgname}"
+}

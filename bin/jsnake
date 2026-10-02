@@ -1,0 +1,21 @@
+#!/usr/bin/env -S jennifer run
+# SPDX-License-Identifier: LGPL-3.0-only
+# SPDX-FileCopyrightText: Copyright (C) 2026 mplx <jennifer@mplx.dev>
+# pragma-jennifer-version: >=0.25.0
+# pragma-jennifer-capability: net
+#
+# jsnake - multiplayer snake for the linux console. A thin launcher over the `cli`
+# module, which holds all the logic and its tests. Run it directly:
+#
+#     ./jsnake solo
+#
+# or through the interpreter: `jennifer run bin/jsnake solo`.
+#
+# `bin/` and `src/` must stay siblings: the import below is resolved relative to
+# this file, so a copy of this script on its own will not find the game.
+
+use os;
+
+import "../src/cli.j" as cli;
+
+exit cli.main(os.ARGS);
