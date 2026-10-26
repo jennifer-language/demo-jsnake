@@ -63,26 +63,21 @@ func letterDirection(k as screen.Key) {
 }
 
 /**
- * Whether a lone Escape reaches the program, or whether it takes two presses.
+ * Whether Escape takes two presses to reach the program, or one.
  *
- * `screen.nextKey` reads a second byte unconditionally after `ESC` - to tell a bare
- * Escape from the start of an arrow-key sequence - and `term.readByte` has no timeout, so
- * that read blocks until another key is pressed. Press Escape twice and the pair decodes
- * as one `escape`, which is why Escape works at all; press it once and nothing is
- * delivered, ever.
+ * One: `screen.nextKey` waits 50 ms (`term.readByteTimeout`) for the byte after an `ESC` -
+ * to tell a bare Escape from the start of an arrow-key sequence - so a lone press arrives
+ * as `escape`. A keyboard layer that reads that byte with no timeout cannot deliver a lone
+ * press, only a pair decoded as one `escape`; on such a layer this is true.
  *
- * Fixing it upstream needs a timed read in `term`, which has none - a change deep enough in
- * the interpreter that this is a long-lived workaround rather than a stopgap.
- *
- * **Set this to false the day a lone Escape arrives.** Nothing else has to change: it is
- * what `ESCAPE_LABEL` is built from, and that is what every key legend in the game
- * prints, so the instructions on screen follow the interpreter underneath.
+ * It is what `ESCAPE_LABEL` is built from, and that is what every key legend in the game
+ * prints, so the instructions on screen follow the keyboard layer underneath.
  */
-export def const ESCAPE_NEEDS_TWO as bool init true;
+export def const ESCAPE_NEEDS_TWO as bool init false;
 
 /**
- * How a key legend names the Escape key - `esc esc` while a single press is swallowed,
- * plain `esc` once it is not. See `ESCAPE_NEEDS_TWO`.
+ * How a key legend names the Escape key - `esc esc` when a single press is swallowed,
+ * plain `esc` when it arrives. See `ESCAPE_NEEDS_TWO`.
  */
 export def const ESCAPE_LABEL as string init escapeLabelFor(ESCAPE_NEEDS_TWO);
 
@@ -90,9 +85,8 @@ export def const ESCAPE_LABEL as string init escapeLabelFor(ESCAPE_NEEDS_TWO);
 # while one press does nothing is worse than no legend: it makes the game look broken rather
 # than the key look awkward.
 #
-# It takes the flag rather than reading it so that both answers can be tested. The arm this
-# build does not use is the one that matters on the day the flag flips, and an untested
-# switch is not a switch.
+# It takes the flag rather than reading it so that both answers can be tested, including
+# the one the current setting does not use: an untested switch is not a switch.
 func escapeLabelFor(needsTwo as bool) {
     if ($needsTwo) {
         return "esc esc";
@@ -110,7 +104,8 @@ func escapeLabelFor(needsTwo as bool) {
  *
  * One key that always means "back" is why there is no table of exit keys to remember.
  *
- * Note `ESCAPE_NEEDS_TWO`: this is true of the *second* of two presses, not the first.
+ * Two Escapes inside `nextKey`'s 50 ms window decode as one `escape`, so a nervous double
+ * press is one step back, not two.
  * @param k {screen.Key} the key pressed
  * @return {bool} true when the player wants out of this screen
  */

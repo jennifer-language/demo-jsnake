@@ -1925,6 +1925,9 @@ func loop(
     def table as Table init $start;
     def net as link.Host init $wire;
     def frame as screen.Buffer init screen.newScreen(1, 1);
+    # The blank frame every tick draws on, rebuilt only when the terminal is resized:
+    # building one costs most of a frame on a large terminal (see `view.renderOn`).
+    def blank as screen.Buffer init screen.newScreen(1, 1);
     def nextTick as int init nowMs();
     def running as bool init true;
     while ($running) {
@@ -1968,7 +1971,9 @@ func loop(
             $table = $swept.table;
             $net = deliver($net, $swept);
             $net = link.sendAll($net, audience($table), stateLine($table));
-            $frame = paint($frame, $table, banner($table, $banner));
+            def size as term.Size init screenSize();
+            $blank = view.blankFor($blank, $size.rows, $size.cols);
+            $frame = paint($frame, $blank, $table, banner($table, $banner));
         }
         # A finished game stops being a game. Ticking an empty field for ever with
         # GAME OVER in the corner leaves a host with nothing to do but kill the program,
@@ -2137,15 +2142,14 @@ func deliver(wire as link.Host, r as Reaction) {
     return $net;
 }
 
-# paint draws the next frame and writes only what changed since the last one.
-func paint(previous as screen.Buffer, t as Table, note as string) {
-    def size as term.Size init screenSize();
-    def frame as screen.Buffer init view.render(
+# paint draws the next frame on `blank` and writes only what changed since the last one.
+func paint(previous as screen.Buffer, blank as screen.Buffer, t as Table, note as string) {
+    def frame as screen.Buffer init view.renderOn(
+        $blank,
         $t.game,
         localId($t),
         $note,
-        $size.rows,
-        $size.cols);
+        view.HOST_KEYS);
     io.printf("%s", screen.diff($previous, $frame));
     return $frame;
 }

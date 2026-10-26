@@ -585,11 +585,49 @@ func reasonFor(s as Seat) {
     return "no answer from the host";
 }
 
+/**
+ * What the last frame on screen was drawn from, apart from the game itself: the stall
+ * note and the terminal size. Together with "a message arrived" it is everything a client
+ * frame depends on, which is what lets `mustRedraw` skip a pass with nothing new.
+ * @field stalled {bool} whether the header said the host had gone quiet
+ * @field rows {int} the terminal rows the frame was drawn for
+ * @field cols {int} the terminal columns the frame was drawn for
+ */
+export def struct Shown {
+    stalled as bool,
+    rows as int,
+    cols as int
+};
+
+/**
+ * Whether the client has to draw a new frame this pass.
+ *
+ * The loop wakes every `IDLE_SLEEP_MS` to read keys and the socket, but the host sends a
+ * state only once a tick. Drawing on every wake would render and diff the same frame
+ * several times per tick and keep a whole core busy on an ordinary 80x24 terminal for a
+ * picture that has not changed. A frame changes only when a message arrived, the stall
+ * note appeared or went away, or the window was resized, so those are the only reasons to
+ * draw.
+ *
+ * Pure, so the rule is pinned down by a test rather than by watching `top`.
+ * @param last {Shown} what the frame on screen was drawn from
+ * @param now {Shown} the same, as it is this pass
+ * @param heard {bool} whether any message arrived from the host this pass
+ * @return {bool} true when a new frame must be drawn
+ */
+export func mustRedraw(last as Shown, now as Shown, heard as bool) {
+    return $heard or $now != $last;
+}
+
 # session is the guest's main pass: keys out, state in, draw, keepalive.
 func session(start as link.Client, seat as Seat, address as string, input as screen.Input) {
     def wire as link.Client init $start;
     def out as Seat init $seat;
     def frame as screen.Buffer init screen.newScreen(1, 1);
+    def blank as screen.Buffer init screen.newScreen(1, 1);
+    # Nothing has been drawn yet: a zero size never matches a real one, so the first pass
+    # draws.
+    def shown as Shown init Shown{stalled: false, rows: 0, cols: 0};
     def nextPing as int init nowMs() + PING_MS;
     def lastState as int init nowMs();
     def playing as bool init true;
@@ -615,6 +653,7 @@ func session(start as link.Client, seat as Seat, address as string, input as scr
         }
         def inbox as link.Inbox init link.listenFor($wire);
         $wire = $inbox.client;
+        def heard as bool init len($inbox.lines) > 0;
         for (def line in $inbox.lines) {
             $out = absorb($out, $line);
             $lastState = nowMs();
@@ -628,10 +667,20 @@ func session(start as link.Client, seat as Seat, address as string, input as scr
             $nextPing = nowMs() + PING_MS;
             $wire = link.tell($wire, proto.encodePing($out.id));
         }
-        if (isWaitingToStart($out)) {
-            $frame = waitingFrame($frame, $out);
-        } else {
-            $frame = draw($frame, $out, $address, nowMs() - $lastState > STALL_MS);
+        def size as term.Size init screenSize();
+        def now as Shown init Shown{
+            stalled: nowMs() - $lastState > STALL_MS,
+            rows: $size.rows,
+            cols: $size.cols
+        };
+        if (mustRedraw($shown, $now, $heard)) {
+            if (isWaitingToStart($out)) {
+                $frame = waitingFrame($frame, $out, $size);
+            } else {
+                $blank = view.blankFor($blank, $size.rows, $size.cols);
+                $frame = draw($frame, $blank, $out, $address, $now.stalled);
+            }
+            $shown = $now;
         }
         time.sleep(time.fromMilliseconds(IDLE_SLEEP_MS));
     }
@@ -640,22 +689,24 @@ func session(start as link.Client, seat as Seat, address as string, input as scr
 
 # waitingFrame draws the host's waiting room, writing only what changed - so a roster
 # filling up does not flicker.
-func waitingFrame(previous as screen.Buffer, s as Seat) {
-    def size as term.Size init screenSize();
+func waitingFrame(previous as screen.Buffer, s as Seat, size as term.Size) {
     def frame as screen.Buffer init view.message(WAITING, lobbyLines($s), $size.rows, $size.cols);
     io.printf("%s", screen.diff($previous, $frame));
     return $frame;
 }
 
 # draw paints the next frame, writing only the cells that changed.
-func draw(previous as screen.Buffer, s as Seat, address as string, stalled as bool) {
-    def size as term.Size init screenSize();
-    def frame as screen.Buffer init view.renderWith(
+func draw(
+    previous as screen.Buffer,
+    blank as screen.Buffer,
+    s as Seat,
+    address as string,
+    stalled as bool) {
+    def frame as screen.Buffer init view.renderOn(
+        $blank,
         $s.game,
         $s.id,
         status($s, $address, $stalled),
-        $size.rows,
-        $size.cols,
         view.GUEST_KEYS);
     io.printf("%s", screen.diff($previous, $frame));
     return $frame;

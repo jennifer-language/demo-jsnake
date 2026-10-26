@@ -648,3 +648,37 @@ func testAGuestPlaysARoundThenAnother() {
     testing.assertEqual($s.id, 1);
     testing.assertFalse($s.finished);
 }
+
+# --- when the client draws --------------------------------------------------
+
+func testTheClientDrawsWhenTheHostSentSomething() {
+    def same as Shown init Shown{stalled: false, rows: 24, cols: 80};
+    testing.assertTrue(mustRedraw($same, $same, true));
+}
+
+func testTheClientDoesNotRedrawAFrameThatCannotHaveChanged() {
+    # The loop wakes every few milliseconds; most wakes bring nothing, and drawing the
+    # same frame again on each of them would keep a core busy.
+    def same as Shown init Shown{stalled: false, rows: 24, cols: 80};
+    testing.assertFalse(mustRedraw($same, $same, false));
+}
+
+func testTheClientRedrawsWhenTheHostGoesQuietOrComesBack() {
+    def live as Shown init Shown{stalled: false, rows: 24, cols: 80};
+    def quiet as Shown init Shown{stalled: true, rows: 24, cols: 80};
+    testing.assertTrue(mustRedraw($live, $quiet, false));
+    testing.assertTrue(mustRedraw($quiet, $live, false));
+}
+
+func testTheClientRedrawsWhenTheWindowIsResized() {
+    def before as Shown init Shown{stalled: false, rows: 24, cols: 80};
+    testing.assertTrue(mustRedraw($before, Shown{stalled: false, rows: 30, cols: 80}, false));
+    testing.assertTrue(mustRedraw($before, Shown{stalled: false, rows: 24, cols: 100}, false));
+}
+
+func testTheClientDrawsItsFirstFrameBeforeHearingAnything() {
+    # The session starts from a zero size, which no terminal reports, so the first pass
+    # draws even if the host has said nothing yet.
+    def nothing as Shown init Shown{stalled: false, rows: 0, cols: 0};
+    testing.assertTrue(mustRedraw($nothing, Shown{stalled: false, rows: 24, cols: 80}, false));
+}

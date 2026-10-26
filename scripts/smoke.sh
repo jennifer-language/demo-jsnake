@@ -196,31 +196,30 @@ run "host-plain"    5 ""  host --port 47905 --now --plain --bots 1 --name smoke
 run "host-private"  5 ""  host --port 47906 --now --private --bots 1 --name smoke
 run "solo"          5 ""  solo --bots 2
 run "solo-setup"    5 "$(printf '\r')" solo --setup --bots 1
-# Escape is the only way out, and it takes two presses: `screen.nextKey` blocks on the
-# second byte after an ESC, so one press is swallowed and the pair decodes as a single
-# `escape`. Sending two is what a player actually does.
-run "solo-esc"      5 "$(printf '\033\033')" solo --bots 1
+# Escape is the only way out, and one press is what `screen.nextKey` delivers: it waits
+# 50 ms for the byte after an ESC before deciding the press was alone.
+run "solo-esc"      5 "$(printf '\033')" solo --bots 1
 # What Escape does in each context, driven for real: which one you get depends on where you
 # are, and the loop that decides is not reachable from the suite.
 #
 # A playing host goes back to its title screen and does NOT quit.
 timed "host-esc-menu" 9 \
-    "sleep 1.2; printf '\r'; sleep 2.5; printf '\033\033'; sleep 2" \
+    "sleep 1.2; printf '\r'; sleep 2.5; printf '\033'; sleep 2" \
     host --port 47907 --players 2 --bots 1 --name smoke
 # A host already on its title screen has nothing behind it, so it leaves.
 timed "host-esc-exit" 7 \
-    "sleep 1.5; printf '\033\033'; sleep 2" \
+    "sleep 1.5; printf '\033'; sleep 2" \
     host --port 47911 --players 2 --bots 1 --name smoke
 # A solo player never saw a title screen, so Escape leaves rather than dropping them on one.
-timed "solo-esc-exit" 7 "sleep 1.5; printf '\033\033'; sleep 2" solo --bots 1
+timed "solo-esc-exit" 7 "sleep 1.5; printf '\033'; sleep 2" solo --bots 1
 # ...but `solo --setup` came from one, so Escape goes back to it.
 timed "solo-setup-back" 9 \
-    "sleep 1.2; printf '\r'; sleep 2.5; printf '\033\033'; sleep 2" \
+    "sleep 1.2; printf '\r'; sleep 2.5; printf '\033'; sleep 2" \
     solo --setup --bots 1
-# A single Escape is swallowed (see `keys.ESCAPE_NEEDS_TWO`), so the game must keep running
-# rather than half-acting on it.
-timed "solo-one-esc" 6 "sleep 1.5; printf '\033'; sleep 3" solo --bots 1
-# And the letters we removed must do nothing at all.
+# Two Escapes inside `nextKey`'s 50 ms window decode as one `escape`, so a nervous double
+# press on a solo game leaves once, like one press.
+timed "solo-two-esc" 7 "sleep 1.5; printf '\033\033'; sleep 2" solo --bots 1
+# Plain letters other than w a s d must do nothing at all.
 timed "solo-qx-inert" 6 "sleep 1.5; printf 'qQxX'; sleep 3" solo --bots 1
 # A full table on the ordinary terminal - the case the title screen's layouts exist for, and
 # the only one that reaches the folded roster. It belongs here rather than in the suite
@@ -232,6 +231,16 @@ sized "host-full-80x20"  6 20 80 "" host --port 47909 --players 8 --bots 7 --nam
 sized "host-two-80x24"   6 24 80 "" host --port 47910 --players 2 --bots 1 --name smoke
 run "join-nobody"   6 "$(printf '\033\033')" join --timeout 300
 run "join-refused"  6 ""  join --host 127.0.0.1:47999 --mode tcp
+# A client inside a running game: `guest.session`'s draw path, which redraws only when
+# something changed (`guest.mustRedraw`) and draws on a kept blank frame
+# (`view.renderOn`). No test reaches that loop, and none of the cases above get a client
+# past the handshake. The host runs in its own pty in the background; the client's keys
+# are only a sleep, so its stdin stays open and it plays until the timeout.
+( sleep 9 | timeout 9 script -qec "$jsnake host --port 47912 --now --players 3 --bots 1 --name smoke" /dev/null ) \
+    >"$log/join-host.log" 2>&1 &
+sleep 1.5
+timed "join-play" 6 "sleep 6" join --host 127.0.0.1:47912 --name guest
+wait
 
 # Which screen each one opened on - a title screen that cannot be skipped, or a game
 # that never waits, are both bugs that error nowhere.
@@ -243,9 +252,10 @@ returned "host-esc-menu"
 returned "solo-setup-back"
 left "host-esc-exit"
 left "solo-esc-exit"
+left "solo-two-esc"
 
-# The two that must NOT have exited: a single Escape, and the removed letters.
-for inert in solo-one-esc solo-qx-inert; do
+# The one that must NOT have exited: the plain letters.
+for inert in solo-qx-inert; do
     if grep -q '1049l' "$log/$inert.log"; then
         echo "FAIL $inert left the game when it should have ignored the keys"
         fails=$((fails + 1))
@@ -259,6 +269,17 @@ wants "host-full-80x24" title
 fits "host-full-80x24"
 fits "host-full-80x20"
 fits "host-two-80x24"
+
+# The client actually drew the game, not a waiting screen or a handshake error: `steer`
+# is the game legend, and `leave` is the client's own (a host's says `menu`). `screen.diff`
+# writes only cells that changed, so a phrase arrives without the spaces between its words
+# - match single words.
+if grep -qF 'steer' "$log/join-play.log" && grep -qF 'leave' "$log/join-play.log"; then
+    echo "ok   join-play drew the game as a seated client"
+else
+    echo "FAIL join-play never drew the game as a client"
+    fails=$((fails + 1))
+fi
 
 # `list` needs no terminal at all, so it is checked directly.
 if "$jsnake" list --timeout 200 >"$log/list.log" 2>&1 || [ $? -eq 1 ]; then

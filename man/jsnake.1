@@ -206,21 +206,14 @@ or a
 host, neither of which ever showed a title screen. Repeated, it always gets you out, one
 screen at a time.
 .IP
-.B It takes two presses.
-A lone Escape is never delivered \- the interpreter's keyboard layer reads a second byte
-after it with no timeout \- so the pair is what arrives as one Escape. Every key legend
-therefore reads
-.B esc esc
-rather than
-.BR esc ;
-see
-.B BUGS
-below.
+One press is enough. The game waits 50 ms after an Escape for the next byte, to tell it
+from the start of an arrow key: two presses inside that window count as one, and an
+Escape followed inside it by a printable key is read as Alt+that key, the way terminals
+encode Alt.
 .TP
 .B Ctrl\-C
 Stop the program immediately, from any screen. The terminal's own convention rather than
-one of the game's keys, and deliberately still reachable after a swallowed Escape, so a
-player who pressed Escape once and saw nothing happen is never stuck.
+one of the game's keys.
 .TP
 .B enter, space
 Confirm: start the game from the title screen, or begin another round from the final
@@ -336,28 +329,6 @@ Join a host discovery cannot reach:
 .TP
 See what is on the network, from a pipe:
 .B jsnake list
-.SH BUGS
-.B Escape takes two presses.
-A lone Escape is never delivered: the interpreter's keyboard layer reads a second byte
-unconditionally after one \- to tell a bare Escape from the start of an arrow\-key
-sequence \- and has no timed read, so that read blocks until another key is pressed.
-Pressing Escape twice decodes the pair as a single Escape, which is why the key works at
-all, and why every legend spells it
-.BR "esc esc" .
-A single Escape followed by a printable key is merged into Alt+that key, so neither press
-has any effect; Ctrl\-C after an Escape does still arrive, which is what keeps the
-emergency exit reachable.
-.PP
-This is an upstream limitation, reported to the Jennifer team with reproductions. It needs
-a timed read in the interpreter's
-.B term
-library; when that lands, a single constant in
-.B src/keys.j
-changes and every legend in the game follows it.
-.PP
-Report bugs at
-.UR https://github.com/jennifer-language/demo-jsnake/issues
-.UE .
 .SH SEE ALSO
 .BR jennifer (1),
 .BR jvc (1),

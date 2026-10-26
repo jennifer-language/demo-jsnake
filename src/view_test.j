@@ -1020,3 +1020,56 @@ func testTheJoinMenuOffersAWayOut() {
     }
 }
 
+# --- drawing on a kept blank frame ------------------------------------------
+
+func testRenderOnABlankFrameDrawsExactlyWhatRenderDraws() {
+    # The host and client loops draw with renderOn so they can keep one blank frame
+    # instead of building a new one every tick. That is only safe while the two paths
+    # cannot disagree.
+    def blank as screen.Buffer init blankFor(screen.newScreen(1, 1), 24, 80);
+    testing.assertEqual(
+        renderOn($blank, staged(), 1, "ok", HOST_KEYS),
+        render(staged(), 1, "ok", 24, 80));
+    testing.assertEqual(
+        renderOn($blank, staged(), 2, "ok", GUEST_KEYS),
+        renderWith(staged(), 2, "ok", 24, 80, GUEST_KEYS));
+}
+
+func testOneBlankFrameServesFrameAfterFrame() {
+    # The frame drawn on a blank must never leak back into it: the next frame drawn on
+    # the same blank has to come out as if it were the first.
+    def blank as screen.Buffer init blankFor(screen.newScreen(1, 1), 24, 80);
+    def g as rules.Game init staged();
+    renderOn($blank, $g, 1, "first", HOST_KEYS);
+    def later as rules.Game init rules.advance($g);
+    testing.assertEqual(
+        renderOn($blank, $later, 1, "second", HOST_KEYS),
+        render($later, 1, "second", 24, 80));
+    testing.assertEqual($blank, screen.newScreen(24, 80));
+}
+
+func testATooSmallTerminalStillGetsItsExplanationThroughRenderOn() {
+    def g as rules.Game init rules.newGame(60, 30, 1);
+    def blank as screen.Buffer init blankFor(screen.newScreen(1, 1), 10, 40);
+    testing.assertEqual(renderOn($blank, $g, 1, "ok", HOST_KEYS), render($g, 1, "ok", 10, 40));
+}
+
+func testBlankForKeepsItsFrameUntilTheTerminalIsResized() {
+    def first as screen.Buffer init blankFor(screen.newScreen(1, 1), 24, 80);
+    testing.assertEqual($first, screen.newScreen(24, 80));
+    testing.assertEqual(blankFor($first, 24, 80), $first);
+    def wider as screen.Buffer init blankFor($first, 24, 100);
+    testing.assertEqual($wider.rows, 24);
+    testing.assertEqual($wider.cols, 100);
+}
+
+func testBlankForGivesAnUnknownSizeTheSameFallbackAsRender() {
+    # A pty with no window size reports 0 x 0; render draws 80 x 24 for that, so the
+    # blank it is drawn on has to be the same size or the two paths diverge.
+    def blank as screen.Buffer init blankFor(screen.newScreen(1, 1), 0, 0);
+    testing.assertEqual($blank.rows, FALLBACK_ROWS);
+    testing.assertEqual($blank.cols, FALLBACK_COLS);
+    testing.assertEqual(
+        renderOn($blank, staged(), 1, "ok", HOST_KEYS),
+        render(staged(), 1, "ok", 0, 0));
+}

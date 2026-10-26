@@ -201,14 +201,14 @@ func testTheRealLetterKeysSteer() {
 }
 
 func testTheRealEscapeByteBacksOut() {
-    # 27 is what the key sends. Whether a *lone* one ever reaches us is `ESCAPE_NEEDS_TWO`;
-    # the mapping from the decoded key is this file's business and is right either way.
+    # 27 is what the key sends, and a lone one is what `nextKey` delivers; the mapping from
+    # the decoded key is this file's business.
     testing.assertTrue(isBack(screen.decodeKey([27])));
 }
 
 func testTwoRealEscapeBytesAlsoBackOut() {
-    # What a player actually produces, pressing the key twice: the pair decodes as a single
-    # `escape`, which is the only way one is delivered. See `ESCAPE_NEEDS_TWO`.
+    # Two presses inside `nextKey`'s 50 ms window decode as a single `escape`, so a double
+    # press backs out once.
     testing.assertTrue(isBack(screen.decodeKey([27, 27])));
 }
 
@@ -226,9 +226,9 @@ func testTheRealQAndXBytesDoNothing() {
 }
 
 func testEscapeThenALetterIsNotAnAccidentalExit() {
-    # Escape followed by a printable key decodes as `alt-<char>` rather than as an escape
-    # (see `ESCAPE_NEEDS_TWO`). It must not count as backing out - a player who pressed
-    # Escape and then a steering key has not asked to leave.
+    # Escape followed by a printable key inside `nextKey`'s window decodes as `alt-<char>`
+    # rather than as an escape (the way terminals encode Alt). It must not count as backing
+    # out - a player who pressed Escape and then a steering key has not asked to leave.
     testing.assertFalse(isBack(screen.decodeKey([27, 113])));
     testing.assertFalse(isBack(screen.decodeKey([27, 119])));
     testing.assertEqual(directionOf(screen.decodeKey([27, 119])), "");
@@ -258,8 +258,8 @@ func testAMultiByteCharacterIsNotAnAccidentalCommand() {
 # --- the label the legends print ---------------------------------------------
 
 func testTheEscapeLabelMatchesWhetherOnePressIsEnough() {
-    # The legend has to agree with the interpreter underneath, or the screen is lying about
-    # what to press. One flag drives both; this is what keeps them together.
+    # The legend has to agree with the keyboard layer underneath, or the screen is lying
+    # about what to press. One flag drives both; this is what keeps them together.
     if (ESCAPE_NEEDS_TWO) {
         testing.assertEqual(ESCAPE_LABEL, "esc esc");
     } else {
@@ -268,8 +268,8 @@ func testTheEscapeLabelMatchesWhetherOnePressIsEnough() {
 }
 
 func testBothLabelsAreSpelledTheWayThePlayerPressesThem() {
-    # The flag's whole purpose is that flipping it fixes every legend at once, so both
-    # answers are checked here - including the one this build does not use.
+    # One flag spells every legend, so both answers are checked here - including the one
+    # the current setting does not use.
     testing.assertEqual(escapeLabelFor(true), "esc esc");
     testing.assertEqual(escapeLabelFor(false), "esc");
 }

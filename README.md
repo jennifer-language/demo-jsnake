@@ -28,7 +28,7 @@ jsnake  tick 122    5 player(s)  hosting udp:47475  public
  *# cpu2-normal      90  len   4  ♥2  alive
   % cpu3-normal      70  len  18  ♥3  alive
   + cpu4-normal      60  len  16  ♥3  alive
-arrows / wasd steer    esc esc  menu    ^C  quit
+arrows / wasd steer    esc  menu    ^C  quit
 * food  C candy +3  V veg -3  ! toadstool!  G ghost
 ```
 
@@ -62,12 +62,8 @@ exit keys to remember. Ctrl-C stops the program immediately from anywhere; it is
 terminal's own convention rather than one of the game's keys. No plain letter is a
 command — the letters steer.
 
-> **Escape needs two presses.** `screen.nextKey` reads a second byte unconditionally after
-> an `ESC` and `term` has no timed read, so a lone Escape is never delivered; press it
-> twice and the pair arrives as one `escape`. That is why every key legend says `esc esc`
-> rather than `esc` — the legend is built from `keys.ESCAPE_NEEDS_TWO`, so the day a single
-> press works, one constant changes and the screens follow. See **Known limitation**
-> below.
+> **One press.** A single Escape is enough; see **How Escape is read** below for what
+> happens to two quick presses, or to Escape followed by another key.
 
 ### The title screen
 
@@ -104,7 +100,7 @@ the settings there while players arrive, and the game starts when you say so:
       │   cpu2-normal    computer                                       │
       │   cpu3-normal    computer                                       │
       │                                                                 │
-      │ up/down choose   left/right change   enter start   esc esc quit │
+      │ up/down choose   left/right change   enter start   esc quit     │
       │                                                                 │
       └─────────────────────────────────────────────────────────────────┘
 ```
@@ -149,7 +145,7 @@ screen is for. On 80x24 with a full table:
 │   cpu4-normal   cpu      cpu5-normal   cpu                      │
 │   cpu6-normal   cpu      cpu7-normal   cpu                      │
 │                                                                 │
-│ up/down choose   left/right change   enter start   esc esc quit │
+│ up/down choose   left/right change   enter start   esc quit     │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -256,7 +252,7 @@ a choice.
                   │  4  cpu2-normal       100  2 death(s)   │
                   │  5  ada                 0  2 death(s)   │
                   │                                         │
-                  │ enter  another round      esc esc  menu │
+                  │ enter  another round      esc  menu     │
                   │                                         │
                   └─────────────────────────────────────────┘
 ```
@@ -490,7 +486,7 @@ There is nothing to build — it is source.
 
 ```sh
 jennifer test src/rules_test.j     # one module
-for f in src/*_test.j; do jennifer test "$f"; done   # everything: 846 tests, ~35s
+for f in src/*_test.j; do jennifer test "$f"; done   # everything: 896 tests, ~35s
 jennifer lint src/*.j bin/jsnake   # must stay at zero findings
 jennifer fmt -l src/*.j            # must print nothing
 jennifer test --coverage src/rules_test.j            # statement coverage
@@ -637,32 +633,25 @@ Put it anywhere and symlink `bin/jsnake` onto your `PATH`; keep `bin/` and `src/
 together. `man/jsnake.1` is in there too — `man -l man/jsnake.1` reads it without
 installing it anywhere.
 
-## Known limitation
+## How Escape is read
 
-**Escape takes two presses.** A lone `ESC` is never delivered: `screen.nextKey` reads a
-second byte unconditionally after it — to tell a bare Escape from the start of an
-arrow-key sequence — and `term` has no timed read, so that read blocks until you press
-something else. Press Escape twice and the pair decodes as one `escape`, which is why
-Escape works at all.
-
+An arrow key and Escape start with the same byte, `ESC`. `screen.nextKey` tells them apart
+by timing: after an `ESC` it waits 50 ms (`term.readByteTimeout`) for the next byte. A
+terminal sends a sequence's bytes together, so nothing in that window means a bare Escape.
 What a terminal sends, and what the game receives:
 
 | keys sent | delivered |
 | --------- | --------- |
-| `ESC` | *nothing, ever* |
-| `ESC` `ESC` | `escape` |
-| `ESC` then any printable key | `alt-<key>` — both presses lost |
-| `ESC` then Ctrl-C | `ctrl-c` |
+| `ESC` | `escape` |
+| `ESC` `ESC` (within 50 ms) | `escape` — one step back, not two |
+| `ESC`, pause, any key | `escape`, then the key |
+| `ESC` then a printable key within 50 ms | `alt-<key>` — how terminals encode Alt |
+| `ESC` then Ctrl-C | `escape`, `ctrl-c` |
 
-The last row is why Ctrl-C is the safety net: it is the one key that still arrives after a
-swallowed Escape, so a player who pressed Escape once and saw nothing happen is never
-stuck.
-
-Fixing it needs a timed read in `term`, which has none — a change deep enough in the
-interpreter that this is a long-lived workaround rather than a stopgap. Until then every key
-legend says `esc esc`: one constant (`keys.ESCAPE_NEEDS_TWO`) drives that wording and
-`testTheEscapeLabelMatchesWhetherOnePressIsEnough` keeps the two in step, so adopting the
-fix here is a one-line change. Reported upstream with reproductions.
+One constant, `keys.ESCAPE_NEEDS_TWO`, drives the legend wording, and
+`testTheEscapeLabelMatchesWhetherOnePressIsEnough` keeps the two in step. On a keyboard
+layer that reads the byte after `ESC` with no timeout, a single press never arrives and
+two decode as one; setting the constant to `true` makes every legend say `esc esc`.
 
 ## License
 

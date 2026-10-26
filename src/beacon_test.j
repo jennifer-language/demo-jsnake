@@ -383,7 +383,7 @@ func testAbsorbDropsADatagramThatIsNotUtf8() {
     $noise[] = 200;
     $noise[] = 201;
     $noise[] = 202;
-    def d as net.Datagram init net.Datagram{data: $noise, peer: "10.0.0.1:47474"};
+    def d as net.Datagram init net.Datagram{data: $noise, peer: "10.0.0.1:47474", truncated: false};
     testing.assertEqual(len(absorb([], $d)), 0);
 }
 
@@ -391,7 +391,11 @@ func testAbsorbReadsAnOfferOutOfARealDatagram() {
     def payload as bytes init convert.bytesFromString(
         proto.wire(proto.encodeOffer(47475, link.TCP, "kitchen", 1, 8)),
         "utf-8");
-    def d as net.Datagram init net.Datagram{data: $payload, peer: "10.0.0.9:47474"};
+    def d as net.Datagram init net.Datagram{
+        data: $payload,
+        peer: "10.0.0.9:47474",
+        truncated: false
+    };
     def got as list of Found init absorb([], $d);
     testing.assertEqual(len($got), 1);
     testing.assertEqual($got[0].address, "10.0.0.9:47475");
@@ -400,18 +404,30 @@ func testAbsorbReadsAnOfferOutOfARealDatagram() {
 
 func testAbsorbIgnoresAnOfferWithNoUsablePort() {
     def payload as bytes init convert.bytesFromString("OFFER|1|0|tcp|x|0|8\n", "utf-8");
-    def d as net.Datagram init net.Datagram{data: $payload, peer: "10.0.0.9:47474"};
+    def d as net.Datagram init net.Datagram{
+        data: $payload,
+        peer: "10.0.0.9:47474",
+        truncated: false
+    };
     testing.assertEqual(len(absorb([], $d)), 0);
 }
 
 func testAbsorbIgnoresAnOfferNamingAnUnknownTransport() {
     def payload as bytes init convert.bytesFromString("OFFER|1|47475|pigeon|x|0|8\n", "utf-8");
-    def d as net.Datagram init net.Datagram{data: $payload, peer: "10.0.0.9:47474"};
+    def d as net.Datagram init net.Datagram{
+        data: $payload,
+        peer: "10.0.0.9:47474",
+        truncated: false
+    };
     testing.assertEqual(len(absorb([], $d)), 0);
 }
 
 func testAbsorbIgnoresADatagramThatIsNotAnOffer() {
     def payload as bytes init convert.bytesFromString(proto.wire(proto.encodeQuery()), "utf-8");
-    def d as net.Datagram init net.Datagram{data: $payload, peer: "10.0.0.9:47474"};
+    def d as net.Datagram init net.Datagram{
+        data: $payload,
+        peer: "10.0.0.9:47474",
+        truncated: false
+    };
     testing.assertEqual(len(absorb([], $d)), 0);
 }

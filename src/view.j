@@ -410,13 +410,56 @@ export func renderWith(
     rows as int,
     cols as int,
     legend as string) {
-    return draw(
-        $g,
-        $myId,
-        $status,
-        usable($rows, FALLBACK_ROWS),
-        usable($cols, FALLBACK_COLS),
-        $legend);
+    return renderOn(blankFor(screen.newScreen(1, 1), $rows, $cols), $g, $myId, $status, $legend);
+}
+
+/**
+ * Draw the game onto a blank frame the caller keeps, rather than one built for this call.
+ *
+ * `screen.newScreen` fills its buffer one cell at a time in interpreted code, which on a
+ * 110x244 terminal is about 33 ms - most of a frame - against under 2 ms to copy a blank
+ * buffer that already exists. A loop that draws every tick therefore keeps one blank frame
+ * from `blankFor` and draws on it. The frame size is the blank's size; `blank` is never
+ * changed, because a struct is a value and the first write here works on a copy.
+ * @param blank {screen.Buffer} an untouched frame from `blankFor`, sized to the terminal
+ * @param g {rules.Game} the state to draw
+ * @param myId {int} the player id at this terminal, or 0 for a spectator
+ * @param status {string} a short status note for the header
+ * @param legend {string} the key line to draw, `HOST_KEYS` or `GUEST_KEYS`
+ * @return {screen.Buffer} the frame
+ */
+export func renderOn(
+    blank as screen.Buffer,
+    g as rules.Game,
+    myId as int,
+    status as string,
+    legend as string) {
+    return draw($blank, $g, $myId, $status, $legend);
+}
+
+/**
+ * A blank frame for a terminal of this size: `cached` itself when it already is one,
+ * otherwise a new one. Call it every tick with the frame it returned last time; it only
+ * builds a new buffer when the terminal was resized.
+ *
+ * The size goes through the same fallback as `render` - a terminal that reports 0 x 0
+ * gets the conventional 80 x 24 - so `renderOn` with this frame draws exactly what
+ * `render` would.
+ * Only ever pass back what this returned. A frame that has been drawn on is the right size
+ * and would be handed back as is; the loops are safe because `renderOn` cannot change the
+ * blank it is given (it draws on a copy).
+ * @param cached {screen.Buffer} the frame this returned last time, or any buffer at first
+ * @param rows {int} the terminal's rows
+ * @param cols {int} the terminal's columns
+ * @return {screen.Buffer} a blank frame of the usable size
+ */
+export func blankFor(cached as screen.Buffer, rows as int, cols as int) {
+    def high as int init usable($rows, FALLBACK_ROWS);
+    def wide as int init usable($cols, FALLBACK_COLS);
+    if ($cached.rows == $high and $cached.cols == $wide) {
+        return $cached;
+    }
+    return screen.newScreen($high, $wide);
 }
 
 # usable substitutes a conventional size when the terminal reports none.
@@ -432,14 +475,15 @@ func usable(reported as int, fallback as int) {
     return $reported;
 }
 
-# draw is render's body, on a size already known to be plausible.
+# draw is render's body, on a blank frame whose size is already known to be plausible.
 func draw(
+    blank as screen.Buffer,
     g as rules.Game,
     myId as int,
     status as string,
-    rows as int,
-    cols as int,
     legend as string) {
+    def rows as int init $blank.rows;
+    def cols as int init $blank.cols;
     def sizing as Fit init fit($g, $rows, $cols);
     if (not $sizing.fits) {
         return message(
@@ -453,11 +497,10 @@ func draw(
             $rows,
             $cols);
     }
-    def buf as screen.Buffer init screen.newScreen($rows, $cols);
+    def buf as screen.Buffer init $blank;
     $buf = screen.text($buf, 0, 0, header($g, $status));
     $buf = drawBorder($buf, $g);
-    $buf = drawFood($buf, $g);
-    $buf = drawSnakes($buf, $g);
+    $buf = screen.textMany($buf, fieldSpans($g));
     $buf = drawScores($buf, $g, $myId);
     $buf = screen.text($buf, 0, $g.height + len($g.snakes) + 3, $legend);
     if ($g.specials) {
@@ -526,43 +569,46 @@ func drawBorder(buf as screen.Buffer, g as rules.Game) {
     return screen.set($out, $right, $bottom, WRAP_CORNER);
 }
 
-# drawFood paints every piece of food inside the field box.
-func drawFood(buf as screen.Buffer, g as rules.Game) {
-    def out as screen.Buffer init $buf;
+# fieldSpans lists every field cell to paint, in painting order: food first, then every
+# living snake's body, then the heads, so a head that shares a cell with another snake's
+# tail is still the glyph the player sees. It is one list so `render` paints the whole
+# field with a single `screen.textMany` call rather than one call per glyph.
+func fieldSpans(g as rules.Game) {
+    def spans as list of screen.Span init [];
     for (def f in $g.food) {
-        $out = plot($out, $f.cell, foodGlyph($f.kind), foodColor($f.kind));
+        if (onField($f.cell)) {
+            $spans[] = plot($f.cell, foodGlyph($f.kind), foodColor($f.kind));
+        }
     }
-    return $out;
-}
-
-# drawSnakes paints every living snake: bodies first, then heads, so a head that
-# shares a cell with another snake's tail is still the glyph the player sees.
-func drawSnakes(buf as screen.Buffer, g as rules.Game) {
-    def out as screen.Buffer init $buf;
     for (def s in $g.snakes) {
-        if ($s.alive) {
-            def glyph as string init glyphFor($s.id);
-            def color as string init colorFor($s.id);
-            for (def i as int init 1; $i < len($s.cells); $i = $i + 1) {
-                $out = plot($out, $s.cells[$i], $glyph, $color);
+        if (not $s.alive) {
+            continue;
+        }
+        def glyph as string init glyphFor($s.id);
+        def color as string init colorFor($s.id);
+        for (def i as int init 1; $i < len($s.cells); $i = $i + 1) {
+            if (onField($s.cells[$i])) {
+                $spans[] = plot($s.cells[$i], $glyph, $color);
             }
         }
     }
     for (def s in $g.snakes) {
-        if ($s.alive and len($s.cells) > 0) {
-            $out = plot($out, $s.cells[0], HEAD_GLYPH, colorFor($s.id));
+        if ($s.alive and len($s.cells) > 0 and onField($s.cells[0])) {
+            $spans[] = plot($s.cells[0], HEAD_GLYPH, colorFor($s.id));
         }
     }
-    return $out;
+    return $spans;
 }
 
-# plot paints one field cell, ignoring anything off the field: a cell outside the
-# box would otherwise be drawn over the border or the scoreboard.
-func plot(buf as screen.Buffer, cell as geom.Point, glyph as string, color as string) {
-    if ($cell.x < 0 or $cell.y < 0) {
-        return $buf;
-    }
-    return screen.textColor($buf, FIELD_X + $cell.x, FIELD_Y + $cell.y, $glyph, $color);
+# onField is whether a cell is somewhere on the field at all: one that is not would be
+# painted over the border or the scoreboard, so it is left out instead.
+func onField(cell as geom.Point) {
+    return $cell.x >= 0 and $cell.y >= 0;
+}
+
+# plot is one field cell as the span that paints it, offset into the frame.
+func plot(cell as geom.Point, glyph as string, color as string) {
+    return screen.Span{x: FIELD_X + $cell.x, y: FIELD_Y + $cell.y, text: $glyph, color: $color};
 }
 
 # drawScores writes one scoreboard row per player, below the field box.
