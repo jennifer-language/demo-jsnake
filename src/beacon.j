@@ -182,7 +182,7 @@ export func serve(r as Responder, players as int) {
         $r.name,
         $players,
         $r.capacity);
-    def payload as bytes init convert.bytesFromString(proto.wire($offer), "utf-8");
+    def payload as bytes init convert.bytesFromString("utf-8", proto.wire($offer));
     net.setReadDeadline($r.sock, SERVE_MS);
     # A deadline is a read and write deadline both, so an expired one would make
     # the reply below fail; it is cleared on the way out of every path.
@@ -210,7 +210,7 @@ export func serve(r as Responder, players as int) {
 func isQuery(raw as bytes) {
     def text as string init "";
     try {
-        $text = convert.stringFromBytes($raw, "utf-8");
+        $text = convert.stringFromBytes("utf-8", $raw);
     } catch (e) {
         return false;
     }
@@ -269,7 +269,7 @@ export func discoverOn(port as int, timeoutMs as int) {
     def sock as net.UDPSocket init net.listenUDP(":0");
     defer closeQuietly($sock);
     enableBroadcast($sock);
-    def query as bytes init convert.bytesFromString(proto.wire(proto.encodeQuery()), "utf-8");
+    def query as bytes init convert.bytesFromString("utf-8", proto.wire(proto.encodeQuery()));
     sendQuietly($sock, link.address(BROADCAST_ADDRESS, $port), $query);
     sendQuietly($sock, link.address(LOOPBACK_ADDRESS, $port), $query);
     return collect($sock, $timeoutMs);
@@ -306,7 +306,7 @@ func absorb(found as list of Found, d as net.Datagram) {
     def out as list of Found init $found;
     def text as string init "";
     try {
-        $text = convert.stringFromBytes($d.data, "utf-8");
+        $text = convert.stringFromBytes("utf-8", $d.data);
     } catch (e) {
         return $out;
     }

@@ -136,7 +136,7 @@ func testCappedDiscardsAFloodWithNoNewline() {
 }
 
 func testDecodeUtf8ReadsText() {
-    testing.assertEqual(decodeUtf8(convert.bytesFromString("PING|1", "utf-8")), "PING|1");
+    testing.assertEqual(decodeUtf8(convert.bytesFromString("utf-8", "PING|1")), "PING|1");
 }
 
 func testDecodeUtf8DropsBinaryNoise() {

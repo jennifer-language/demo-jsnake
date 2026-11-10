@@ -197,14 +197,14 @@ func testDescribeIsOneLine() {
 # --- isQuery -----------------------------------------------------------------
 
 func testIsQueryAcceptsARealQuery() {
-    testing.assertTrue(isQuery(convert.bytesFromString(proto.wire(proto.encodeQuery()), "utf-8")));
+    testing.assertTrue(isQuery(convert.bytesFromString("utf-8", proto.wire(proto.encodeQuery()))));
 }
 
 func testIsQueryRejectsEverythingElse() {
-    testing.assertFalse(isQuery(convert.bytesFromString("QUERY|99\n", "utf-8")));
-    testing.assertFalse(isQuery(convert.bytesFromString("OFFER|1|1|tcp|a|0|8\n", "utf-8")));
-    testing.assertFalse(isQuery(convert.bytesFromString("", "utf-8")));
-    testing.assertFalse(isQuery(convert.bytesFromString("GET / HTTP/1.1\r\n\r\n", "utf-8")));
+    testing.assertFalse(isQuery(convert.bytesFromString("utf-8", "QUERY|99\n")));
+    testing.assertFalse(isQuery(convert.bytesFromString("utf-8", "OFFER|1|1|tcp|a|0|8\n")));
+    testing.assertFalse(isQuery(convert.bytesFromString("utf-8", "")));
+    testing.assertFalse(isQuery(convert.bytesFromString("utf-8", "GET / HTTP/1.1\r\n\r\n")));
 }
 
 func testIsQueryRejectsBinaryNoise() {
@@ -338,11 +338,11 @@ func testAResponderIgnoresAProbeThatIsNotAQuery() {
     net.sendTo(
         $prober,
         link.address(LOOPBACK_ADDRESS, $r.port),
-        convert.bytesFromString("GET / HTTP/1.1\r\n\r\n", "utf-8"));
+        convert.bytesFromString("utf-8", "GET / HTTP/1.1\r\n\r\n"));
     net.sendTo(
         $prober,
         link.address(LOOPBACK_ADDRESS, $r.port),
-        convert.bytesFromString("QUERY|42\n", "utf-8"));
+        convert.bytesFromString("utf-8", "QUERY|42\n"));
     testing.assertEqual(poke($r, 0, 1), 0);
 }
 
@@ -389,8 +389,8 @@ func testAbsorbDropsADatagramThatIsNotUtf8() {
 
 func testAbsorbReadsAnOfferOutOfARealDatagram() {
     def payload as bytes init convert.bytesFromString(
-        proto.wire(proto.encodeOffer(47475, link.TCP, "kitchen", 1, 8)),
-        "utf-8");
+        "utf-8",
+        proto.wire(proto.encodeOffer(47475, link.TCP, "kitchen", 1, 8)));
     def d as net.Datagram init net.Datagram{
         data: $payload,
         peer: "10.0.0.9:47474",
@@ -403,7 +403,7 @@ func testAbsorbReadsAnOfferOutOfARealDatagram() {
 }
 
 func testAbsorbIgnoresAnOfferWithNoUsablePort() {
-    def payload as bytes init convert.bytesFromString("OFFER|1|0|tcp|x|0|8\n", "utf-8");
+    def payload as bytes init convert.bytesFromString("utf-8", "OFFER|1|0|tcp|x|0|8\n");
     def d as net.Datagram init net.Datagram{
         data: $payload,
         peer: "10.0.0.9:47474",
@@ -413,7 +413,7 @@ func testAbsorbIgnoresAnOfferWithNoUsablePort() {
 }
 
 func testAbsorbIgnoresAnOfferNamingAnUnknownTransport() {
-    def payload as bytes init convert.bytesFromString("OFFER|1|47475|pigeon|x|0|8\n", "utf-8");
+    def payload as bytes init convert.bytesFromString("utf-8", "OFFER|1|47475|pigeon|x|0|8\n");
     def d as net.Datagram init net.Datagram{
         data: $payload,
         peer: "10.0.0.9:47474",
@@ -423,7 +423,7 @@ func testAbsorbIgnoresAnOfferNamingAnUnknownTransport() {
 }
 
 func testAbsorbIgnoresADatagramThatIsNotAnOffer() {
-    def payload as bytes init convert.bytesFromString(proto.wire(proto.encodeQuery()), "utf-8");
+    def payload as bytes init convert.bytesFromString("utf-8", proto.wire(proto.encodeQuery()));
     def d as net.Datagram init net.Datagram{
         data: $payload,
         peer: "10.0.0.9:47474",

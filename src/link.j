@@ -495,7 +495,7 @@ func bufferOf(h as Host, peer as string) {
  * @return {Host} the host, less the peer when the send failed
  */
 export func send(h as Host, peer as string, line as string) {
-    def payload as bytes init convert.bytesFromString(proto.wire($line), "utf-8");
+    def payload as bytes init convert.bytesFromString("utf-8", proto.wire($line));
     if ($h.mode == UDP) {
         try {
             net.sendTo($h.udp, $peer, $payload);
@@ -646,7 +646,7 @@ export func tell(c as Client, line as string) {
         return $c;
     }
     def out as Client init $c;
-    def payload as bytes init convert.bytesFromString(proto.wire($line), "utf-8");
+    def payload as bytes init convert.bytesFromString("utf-8", proto.wire($line));
     try {
         if ($out.mode == UDP) {
             net.sendTo($out.udp, $out.server, $payload);
@@ -740,7 +740,7 @@ export func peers(h as Host) {
 # game loop.
 func decodeUtf8(raw as bytes) {
     try {
-        return convert.stringFromBytes($raw, "utf-8");
+        return convert.stringFromBytes("utf-8", $raw);
     } catch (e) {
         return "";
     }
