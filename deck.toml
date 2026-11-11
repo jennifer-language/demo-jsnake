@@ -13,7 +13,7 @@ deck = "https://raw.githubusercontent.com/jennifer-language/demo-jsnake/main/dec
 homepage = "https://github.com/jennifer-language/demo-jsnake"
 
 [engines]
-jennifer = ">=0.25.0"
+jennifer = ">=0.26.0"
 
 [decks]
 

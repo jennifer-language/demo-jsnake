@@ -15,12 +15,12 @@ arch=('any')
 url='https://github.com/jennifer-language/demo-jsnake'
 license=('LGPL-3.0-only')
 
-# Unversioned on purpose. jsnake needs `jennifer >= 0.25.0` and says so in its own
+# Unversioned on purpose. jsnake needs `jennifer >= 0.26.0` and says so in its own
 # `[engines]`, but `jennifer-bin` and `jennifer-git` both declare a bare
-# `provides=('jennifer')` with no version attached, so `jennifer>=0.25.0` here
+# `provides=('jennifer')` with no version attached, so `jennifer>=0.26.0` here
 # would be *unsatisfiable* rather than merely unmet and pacman would refuse the
 # package outright. The floor is still enforced, one layer down: every jsnake
-# source file carries `# pragma-jennifer-version: >=0.25.0` and the interpreter
+# source file carries `# pragma-jennifer-version: >=0.26.0` and the interpreter
 # checks it at read time. Add the version back here as soon as the interpreter
 # packages advertise `provides=("jennifer=$pkgver")`.
 #

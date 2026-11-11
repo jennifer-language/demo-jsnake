@@ -538,7 +538,7 @@ number, and they poll for data rather than sleeping on a timer.
 
 ## Requirements
 
-Jennifer **0.25.0 or newer**, the default `jennifer` binary. Not `jennifer-tiny`: it stubs
+Jennifer **0.26.0 or newer**, the default `jennifer` binary. Not `jennifer-tiny`: it stubs
 `net` (no sockets to play over) and `term` (no raw-mode keyboard).
 
 0.25.0 is where the two interfaces the game is built on arrive — `screen.startInput`, the
@@ -547,7 +547,7 @@ background keyboard reader a free-running loop polls instead of blocking on a ke
 transport layer depends on.
 
 The floor is checked twice over. Every source file carries
-`# pragma-jennifer-version: >=0.25.0` and the interpreter checks it at read time, so the
+`# pragma-jennifer-version: >=0.26.0` and the interpreter checks it at read time, so the
 wrong interpreter is a clear message rather than a puzzling failure mid-game; a dev build
 satisfies any floor, which is why building from `main` works today. And `[engines]` in
 `deck.toml` says the same thing to `jvc`, which gates it before downloading anything.
@@ -591,7 +591,7 @@ Things worth knowing about that install:
 - **The command is a symlink** into `~/.local/share/jvc/apps/jsnake/`, so `ls -l`
   shows where it really lives. `--scope system` puts it under `/usr/local` and needs
   privileges; jvc says so first rather than elevating itself.
-- `[engines] jennifer = ">=0.25.0"` is checked **before** anything is downloaded, so a
+- `[engines] jennifer = ">=0.26.0"` is checked **before** anything is downloaded, so a
   too-old interpreter is refused up front rather than part way through a game.
 
 ### On Arch Linux
