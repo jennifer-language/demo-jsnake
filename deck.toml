@@ -1,6 +1,6 @@
 [package]
 name = "jsnake"
-version = "0.1.0"
+version = "0.2.0"
 description = "Multiplayer snake game for Linux console, written in Jennifer, over UDP/TCP, with UDP discovery, CPU opponents, special food."
 license = "LGPL-3.0-only"
 authors = ["mplx <jennifer@mplx.dev>"]
@@ -18,4 +18,4 @@ jennifer = ">=0.26.0"
 [decks]
 
 [provides]
-jsnake = "0.1.0"
+jsnake = "0.2.0"

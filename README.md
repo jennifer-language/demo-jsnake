@@ -565,7 +565,7 @@ jvc app install https://github.com/jennifer-language/demo-jsnake
 ```
 
 ```
-installed jsnake 0.1.0
+installed jsnake 0.2.0
   from:    https://github.com/jennifer-language/demo-jsnake
   app:     ~/.local/share/jvc/apps/jsnake
   command: ~/.local/bin/jsnake
@@ -625,8 +625,8 @@ interpreter on the build host.
 The release tarball is self-contained and needs no build step:
 
 ```sh
-tar xzf jsnake-0.1.0.tar.gz
-./jsnake-0.1.0/bin/jsnake solo
+tar xzf jsnake-0.2.0.tar.gz
+./jsnake-0.2.0/bin/jsnake solo
 ```
 
 Put it anywhere and symlink `bin/jsnake` onto your `PATH`; keep `bin/` and `src/`

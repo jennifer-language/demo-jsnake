@@ -25,7 +25,7 @@
  * (`1.2.0+7.gd754881`). Build metadata is ignored when versions are compared, so a dev
  * build never sorts above the release it came after.
  */
-export def const VERSION as string init "0.1.0";
+export def const VERSION as string init "0.2.0";
 
 /**
  * The commit this build was cut from, short form, or `"unknown"` outside a checkout.
